@@ -10,35 +10,57 @@ use reqwest::{
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-/// An asynchronous client for interacting with the Groq API.
+/// An asynchronous client for interacting with various LLM's.
 ///
 /// # Parameters
 ///
-/// - `api_key`: The API key for authenticating with the Groq API.
-/// - `endpoint`: The URL of the Groq API endpoint. If not provided, it defaults to <https://api.groq.com/openai/v1>.
+/// - `api_key`: The API key needed.
+/// - `endpoint`: The URL of the LLM API endpoint. If not provided, it defaults to <https://api.groq.com/openai/v1> for groq and <http://localhost:5000> for local.
 ///
 /// # Returns
 ///
-/// An instance of `AsyncGroqClient` configured with the provided API key and endpoint.
+/// An instance of `AsyncLLMClient` configured with the provided API key and endpoint.
 ///
 /// # Example
 ///
 ///```
-/// use groq_client::AsyncGroqClient;
+/// use groq_client::AsyncLLMClient;
 ///
-/// let client = AsyncGroqClient::new("my_api_key".to_string(), None).await;
+/// let client = AsyncLLMClient::new("my_api_key".to_string(), None).await;
 ///```
-pub struct AsyncGroqClient {
+pub struct AsyncLLMClient {
     api_key: String,
     client: Arc<AClient>,
     endpoint: String,
+    source: LlmSource,
 }
 
-impl AsyncGroqClient {
-    /// Creates a new `AsyncGroqClient`
-    pub async fn new(api_key: String, endpoint: Option<String>) -> Self {
-        let ep = endpoint.unwrap_or_else(|| String::from("https://api.groq.com/openai/v1"));
+
+enum LlmSource {
+    GROQ,
+    LOCAL,
+}
+
+impl AsyncLLMClient {
+    /// Creates a new `AsyncLLMClient`
+    pub async fn new(source: String, api_key: String, endpoint: Option<String>) -> Self {
+        let source = match source.to_lowercase().as_str() {
+            "groq" => LlmSource::GROQ,
+            "local" => LlmSource::LOCAL,
+            _ => todo!("Only Groq and local are implemented currently")
+        };
+        let mut ep = String::new();
+        if let Some(endpoint) = endpoint {
+            ep = endpoint;
+        }
+        else {
+            ep = match source {
+                LlmSource::GROQ => String::from("https://api.groq.com/openai/v1"),
+                LlmSource::LOCAL => String::from("localhost:5000"),
+            }
+        }
         Self {
+            source,
             api_key,
             client: Arc::new(AClient::new()),
             endpoint: ep,
@@ -538,7 +560,7 @@ mod tests {
     #[tokio::test]
     async fn test_async_chat_completion() {
         let api_key = std::env::var("GROQ_API_KEY").unwrap();
-        let client = AsyncGroqClient::new(api_key, None).await;
+        let client = AsyncLLMClient::new("groq".to_string(), api_key, None).await;
 
         let messages1 = vec![ChatCompletionMessage {
             role: ChatCompletionRoles::User,
@@ -572,7 +594,7 @@ mod tests {
     #[tokio::test]
     async fn test_async_speech_to_text() {
         let api_key = std::env::var("GROQ_API_KEY").unwrap();
-        let client = AsyncGroqClient::new(api_key, None).await;
+        let client = AsyncLLMClient::new("groq".to_string(), api_key, None).await;
 
         let audio_file_path1 = "onepiece_demo.mp4";
         let audio_file_path2 = "save.ogg";
