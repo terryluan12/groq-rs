@@ -35,7 +35,6 @@ pub struct AsyncLLMClient {
     source: LlmSource,
 }
 
-
 enum LlmSource {
     GROQ,
     LOCAL,
@@ -47,13 +46,12 @@ impl AsyncLLMClient {
         let source = match source.to_lowercase().as_str() {
             "groq" => LlmSource::GROQ,
             "local" => LlmSource::LOCAL,
-            _ => todo!("Only Groq and local are implemented currently")
+            _ => todo!("Only Groq and local are implemented currently"),
         };
-        let mut ep = String::new();
+        let ep: String;
         if let Some(endpoint) = endpoint {
             ep = endpoint;
-        }
-        else {
+        } else {
             ep = match source {
                 LlmSource::GROQ => String::from("https://api.groq.com/openai/v1"),
                 LlmSource::LOCAL => String::from("localhost:5000"),
@@ -235,7 +233,6 @@ impl AsyncLLMClient {
         let header = stream_response.next().await.unwrap();
         let header_str = String::from_utf8_lossy(&header.as_ref().unwrap().as_ref());
         let header_resp: ChatCompletionDeltaResponse = serde_json::from_str(&header_str[6..])?;
-
 
         Ok((
             header_resp,
