@@ -54,7 +54,7 @@ impl AsyncLLMClient {
         } else {
             ep = match source {
                 LlmSource::GROQ => String::from("https://api.groq.com/openai/v1"),
-                LlmSource::LOCAL => String::from("localhost:5000"),
+                LlmSource::LOCAL => String::from("http://localhost:5000/v1"),
             }
         }
         Self {
@@ -610,8 +610,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_async_stream() {
+        let source = "groq".to_string();
         let api_key = std::env::var("GROQ_API_KEY").unwrap();
-        let client = AsyncGroqClient::new(api_key, None).await;
+        let client = AsyncLLMClient::new(source, api_key, None).await;
 
         let messages1 = vec![ChatCompletionMessage {
             role: ChatCompletionRoles::User,
@@ -664,8 +665,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_async_stream_fail() {
+        let source = "groq".to_string();
         let api_key = std::env::var("GROQ_API_KEY").unwrap();
-        let client = AsyncGroqClient::new(api_key, None).await;
+        let client = AsyncLLMClient::new(source, api_key, None).await;
 
         let messages1 = vec![ChatCompletionMessage {
             role: ChatCompletionRoles::User,
