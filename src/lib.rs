@@ -2,12 +2,12 @@ mod message;
 use futures::StreamExt;
 pub use message::*;
 use reqwest::{
+    Client as AClient, Response as AResponse,
     blocking::multipart::{Form, Part},
     blocking::{Client, Response},
     multipart::{Form as AForm, Part as APart},
-    Client as AClient, Response as AResponse,
 };
-use serde_json::{json, Deserializer, StreamDeserializer, Value};
+use serde_json::{Deserializer, StreamDeserializer, Value, json};
 use std::sync::Arc;
 
 /// An asynchronous client for interacting with various LLM's.
@@ -148,6 +148,7 @@ impl AsyncLLMClient {
     async fn send_response(
         &self,
         request: ChatCompletionRequest,
+        stream: bool,
     ) -> Result<reqwest::Response, GroqError> {
         let messages = request
             .messages
@@ -170,7 +171,7 @@ impl AsyncLLMClient {
             "temperature": request.temperature.unwrap_or(1.0),
             "max_tokens": request.max_tokens.unwrap_or(1024),
             "top_p": request.top_p.unwrap_or(1.0),
-            "stream": request.stream.unwrap_or(false),
+            "stream": request.stream.unwrap_or(stream),
         });
 
         if let Some(stop) = &request.stop {
@@ -183,7 +184,7 @@ impl AsyncLLMClient {
         let response = self
             .send_request(body, &format!("{}/chat/completions", self.endpoint))
             .await?;
-        return Ok(response);
+        Ok(response)
     }
 
     /// Sends a chat completion request to the Groq API and returns the parsed response.
@@ -199,7 +200,12 @@ impl AsyncLLMClient {
         &self,
         request: ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse, GroqError> {
-        let response = self.send_response(request).await?;
+        if Some(true) == request.stream {
+            return Err(GroqError::InvalidRequest(
+                "Stream parameter must be set to false for non-streaming responses.".to_string(),
+            ));
+        }
+        let response = self.send_response(request, false).await?;
         let response = self.parse_response(response).await?;
 
         let chat_completion_response: ChatCompletionResponse = serde_json::from_value(response)?;
@@ -222,7 +228,12 @@ impl AsyncLLMClient {
         impl futures::Stream<Item = Result<ChatCompletionDeltaResponse, GroqError>>,
         GroqError,
     > {
-        let response = self.send_response(request).await?;
+        if Some(false) == request.stream {
+            return Err(GroqError::InvalidRequest(
+                "Stream parameter must be set to true for streaming responses.".to_string(),
+            ));
+        }
+        let response = self.send_response(request, true).await?;
         let stream_response = response.bytes_stream();
 
         Ok(futures::stream::unfold(
@@ -257,14 +268,14 @@ impl AsyncLLMClient {
                         Some(l) => l,
                         None => {
                             println!("Breaking, no complete line yet.");
-                            break;
+                            continue;
                         }
                     };
                     let offset = stream.byte_offset();
 
                     if let Err(e) = &line {
                         if resp_string == "[DONE]" {
-                            break;
+                            return None;
                         } else {
                             return Some((
                                 Err(GroqError::DeserializationError {
@@ -281,7 +292,6 @@ impl AsyncLLMClient {
                     resp_string = resp_string[offset..].trim().to_string();
                     return Some((Ok(response.clone()), (stream_response, resp_string)));
                 }
-                None
             },
         ))
     }
