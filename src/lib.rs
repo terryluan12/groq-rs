@@ -9,7 +9,6 @@ use reqwest::{
 };
 use serde_json::{Deserializer, StreamDeserializer, Value, json};
 use std::sync::Arc;
-use log;
 
 /// An asynchronous client for interacting with various LLM's.
 ///
