@@ -108,7 +108,7 @@ pub struct ChatCompletionDeltaResponse {
     pub object: String,
     pub created: u64,
     pub model: String,
-    pub system_fingerprint: String,
+    pub system_fingerprint: Option<String>,
     pub choices: Vec<ChoiceDelta>,
     pub x_groq: Option<XGroq>,
 }

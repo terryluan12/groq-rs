@@ -9,6 +9,7 @@ use reqwest::{
 };
 use serde_json::{Deserializer, StreamDeserializer, Value, json};
 use std::sync::Arc;
+use log;
 
 /// An asynchronous client for interacting with various LLM's.
 ///
@@ -32,36 +33,15 @@ pub struct AsyncLLMClient {
     api_key: String,
     client: Arc<AClient>,
     endpoint: String,
-    source: LlmSource,
-}
-
-enum LlmSource {
-    GROQ,
-    LOCAL,
 }
 
 impl AsyncLLMClient {
     /// Creates a new `AsyncLLMClient`
-    pub async fn new(source: String, api_key: String, endpoint: Option<String>) -> Self {
-        let source = match source.to_lowercase().as_str() {
-            "groq" => LlmSource::GROQ,
-            "local" => LlmSource::LOCAL,
-            _ => todo!("Only Groq and local are implemented currently"),
-        };
-        let ep: String;
-        if let Some(endpoint) = endpoint {
-            ep = endpoint;
-        } else {
-            ep = match source {
-                LlmSource::GROQ => String::from("https://api.groq.com/openai/v1"),
-                LlmSource::LOCAL => String::from("http://localhost:5000/v1"),
-            }
-        }
+    pub async fn new(api_key: String, endpoint: String) -> Self {
         Self {
-            source,
             api_key,
             client: Arc::new(AClient::new()),
-            endpoint: ep,
+            endpoint,
         }
     }
 
@@ -249,10 +229,15 @@ impl AsyncLLMClient {
                 }
 
                 loop {
+                    if resp_string.is_empty() {
+                        return None;
+                    }
                     if resp_string[..prefix.len()] != prefix {
+                        let error = resp_string.clone();
+                        resp_string.clear();
                         return Some((
                             Err(GroqError::ApiError {
-                                message: resp_string.clone(),
+                                message: error,
                                 type_: "api_error".to_string(),
                             }),
                             (stream_response, resp_string),
@@ -277,6 +262,8 @@ impl AsyncLLMClient {
                         if resp_string == "[DONE]" {
                             return None;
                         } else {
+                            log::debug!("Deserialization error IS {:?}", resp_string);
+                            resp_string.insert_str(0, "data: ");
                             return Some((
                                 Err(GroqError::DeserializationError {
                                     message: e.to_string(),
