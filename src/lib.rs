@@ -261,7 +261,6 @@ impl AsyncLLMClient {
                         if resp_string == "[DONE]" {
                             return None;
                         } else {
-                            log::debug!("Deserialization error IS {:?}", resp_string);
                             resp_string.insert_str(0, "data: ");
                             return Some((
                                 Err(GroqError::DeserializationError {
