@@ -231,7 +231,6 @@ impl AsyncLLMClient {
                 if let Some(line) = stream.next() {
                     // If the token is valid, return it
                     if let Ok(line) = line {
-                        log::info!("Complete line found: {:?}", line);
                         let offset = stream.byte_offset(); 
                         resp_string = resp_string[offset..].trim().to_string();
                         return Some((Ok(line.clone()), (stream_response, resp_string)));
@@ -244,7 +243,6 @@ impl AsyncLLMClient {
                 } 
 
                 // Get the next chunk from the stream
-                log::debug!("No complete line yet.");
                 if let Some(chunk) = stream_response.next().await {
                     if let Err(e) = chunk {
                         return Some((Err(GroqError::from(e)), (stream_response, resp_string)));
@@ -258,7 +256,6 @@ impl AsyncLLMClient {
                 else {
                     // If the stream has ended, and resp_string is not empty, the parsing must have failed
                     let error_message = format!("Error with deserializing: {:?}", resp_string);
-                    log::info!("{}", error_message);
                     return Some((
                         Err(GroqError::DeserializationError {
                             message: error_message,
