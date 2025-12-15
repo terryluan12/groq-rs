@@ -223,47 +223,50 @@ impl AsyncLLMClient {
                 // Remove prefix if it exists
                 resp_string = resp_string.strip_prefix(&prefix).unwrap_or(&resp_string).to_string();
 
-                let mut stream: StreamDeserializer<_, ChatCompletionDeltaResponse> =
-                    Deserializer::from_slice(resp_string.as_bytes()).into_iter();
+                loop {
+                    let mut stream: StreamDeserializer<_, ChatCompletionDeltaResponse> =
+                        Deserializer::from_slice(resp_string.as_bytes()).into_iter();
 
 
-                // Check if the stream ended
-                if let Some(line) = stream.next() {
-                    // If the token is valid, return it
-                    if let Ok(line) = line {
-                        let offset = stream.byte_offset(); 
-                        resp_string = resp_string[offset..].trim().to_string();
-                        return Some((Ok(line.clone()), (stream_response, resp_string)));
-                    } else {
-                        // If resp_string is [DONE], end the stream
-                        if resp_string == "[DONE]" {
-                            return None;
+                    // Check if the stream ended
+                    if let Some(line) = stream.next() {
+                        // If the token is valid, return it
+                        if let Ok(line) = line {
+                            let offset = stream.byte_offset(); 
+                            resp_string = resp_string[offset..].trim().to_string();
+                            return Some((Ok(line.clone()), (stream_response, resp_string)));
+                        } else {
+                            // If resp_string is [DONE], end the stream
+                            if resp_string == "[DONE]" {
+                                return None;
+                            }
                         }
+                    } 
+
+                    // Get the next chunk from the stream
+                    if let Some(chunk) = stream_response.next().await {
+                        if let Err(e) = chunk {
+                            return Some((Err(GroqError::from(e)), (stream_response, resp_string)));
+                        }
+                        let chunk = String::from_utf8_lossy(&chunk.unwrap()).trim().to_string();
+                        resp_string.push_str(&chunk);
+                        resp_string = resp_string.strip_prefix(&prefix).unwrap_or(&resp_string).to_string();
+                        
+                        continue;
+                        // return Some((Err(GroqError::IncompleteStream), (stream_response, resp_string)));
                     }
-                } 
-
-                // Get the next chunk from the stream
-                if let Some(chunk) = stream_response.next().await {
-                    if let Err(e) = chunk {
-                        return Some((Err(GroqError::from(e)), (stream_response, resp_string)));
+                    else {
+                        // If the stream has ended, and resp_string is not empty, the parsing must have failed
+                        let error_message = format!("Error with deserializing: {:?}", resp_string);
+                        return Some((
+                            Err(GroqError::DeserializationError {
+                                message: error_message,
+                                type_: "DeserializationError".to_string(),
+                            }),
+                            (stream_response, resp_string),
+                        ));
+                        
                     }
-                    let chunk = String::from_utf8_lossy(&chunk.unwrap()).trim().to_string();
-                    resp_string.push_str(&chunk);
-
-
-                    return Some((Err(GroqError::IncompleteStream), (stream_response, resp_string)));
-                }
-                else {
-                    // If the stream has ended, and resp_string is not empty, the parsing must have failed
-                    let error_message = format!("Error with deserializing: {:?}", resp_string);
-                    return Some((
-                        Err(GroqError::DeserializationError {
-                            message: error_message,
-                            type_: "DeserializationError".to_string(),
-                        }),
-                        (stream_response, resp_string),
-                    ));
-                    
                 }
 
 
