@@ -17,6 +17,8 @@ pub enum GroqError {
     JsonParseError(#[from] serde_json::Error),
     #[error("API error: {message}")]
     ApiError { message: String, type_: String },
+    #[error("Incomplete stream")]
+    IncompleteStream,
     #[error("Deserialization error: {message}")]
     DeserializationError { message: String, type_: String },
 }

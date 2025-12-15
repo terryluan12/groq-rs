@@ -219,67 +219,63 @@ impl AsyncLLMClient {
             (stream_response, String::new()),
             |(mut stream_response, mut resp_string)| async move {
                 let prefix = String::from("data: ");
+                
+                // Remove prefix if it exists
+                resp_string = resp_string.strip_prefix(&prefix).unwrap_or(&resp_string).to_string();
+
+                let mut stream: StreamDeserializer<_, ChatCompletionDeltaResponse> =
+                    Deserializer::from_slice(resp_string.as_bytes()).into_iter();
+
+
+                // Check if the stream ended
+                if let Some(line) = stream.next() {
+                    // If the token is valid, return it
+                    if let Ok(line) = line {
+                        log::info!("Complete line found: {:?}", line);
+                        let offset = stream.byte_offset(); 
+                        resp_string = resp_string[offset..].trim().to_string();
+                        return Some((Ok(line.clone()), (stream_response, resp_string)));
+                    } else {
+                        // If resp_string is [DONE], end the stream
+                        if resp_string == "[DONE]" {
+                            return None;
+                        }
+                    }
+                } 
+
+                // Get the next chunk from the stream
+                log::debug!("No complete line yet.");
                 if let Some(chunk) = stream_response.next().await {
                     if let Err(e) = chunk {
                         return Some((Err(GroqError::from(e)), (stream_response, resp_string)));
                     }
                     let chunk = String::from_utf8_lossy(&chunk.unwrap()).trim().to_string();
                     resp_string.push_str(&chunk);
+
+
+                    return Some((Err(GroqError::IncompleteStream), (stream_response, resp_string)));
+                }
+                else {
+                    // If the stream has ended, and resp_string is not empty, the parsing must have failed
+                    let error_message = format!("Error with deserializing: {:?}", resp_string);
+                    log::info!("{}", error_message);
+                    return Some((
+                        Err(GroqError::DeserializationError {
+                            message: error_message,
+                            type_: "DeserializationError".to_string(),
+                        }),
+                        (stream_response, resp_string),
+                    ));
+                    
                 }
 
-                loop {
-                    if resp_string.is_empty() {
-                        return None;
-                    }
-                    if resp_string[..prefix.len()] != prefix {
-                        let error = resp_string.clone();
-                        resp_string.clear();
-                        return Some((
-                            Err(GroqError::ApiError {
-                                message: error,
-                                type_: "api_error".to_string(),
-                            }),
-                            (stream_response, resp_string),
-                        ));
-                    } else {
-                        resp_string = resp_string[prefix.len()..].to_string();
-                    }
 
-                    let mut stream: StreamDeserializer<_, ChatCompletionDeltaResponse> =
-                        Deserializer::from_slice(resp_string.as_bytes()).into_iter();
-
-                    let line = match stream.next() {
-                        Some(l) => l,
-                        None => {
-                            println!("Breaking, no complete line yet.");
-                            continue;
-                        }
-                    };
-                    let offset = stream.byte_offset();
-
-                    if let Err(e) = &line {
-                        if resp_string == "[DONE]" {
-                            return None;
-                        } else {
-                            resp_string.insert_str(0, "data: ");
-                            return Some((
-                                Err(GroqError::DeserializationError {
-                                    message: e.to_string(),
-                                    type_: format!("{:?}", e.classify()),
-                                }),
-                                (stream_response, resp_string),
-                            ));
-                        }
-                    }
-
-                    let response = line.unwrap();
-
-                    resp_string = resp_string[offset..].trim().to_string();
-                    return Some((Ok(response.clone()), (stream_response, resp_string)));
-                }
             },
         ))
     }
+
+
+                            
 
     /// Parses the response from a Groq API request and returns the response body as a JSON value.
     ///
